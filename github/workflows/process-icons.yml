@@ -1,0 +1,58 @@
+name: Process Icon Files
+
+on:
+  workflow_dispatch:  # Manual trigger
+  push:
+    paths:
+      - '**/*.ora'  # Trigger on .ora file changes
+
+jobs:
+  process-icons:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full git history for commits
+        
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+        
+    - name: Process Icon Files
+      id: process_icons
+      run: |
+        python scripts/process_ora_icons.py
+        
+    - name: Check for changes
+      id: check_changes
+      run: |
+        FOLDERS="${{ steps.process_icons.outputs.processed_folders }}"
+        CHANGES_FOUND="false"
+        
+        for FOLDER in $FOLDERS; do
+          if [[ -n "$(git status --porcelain "$FOLDER/")" ]]; then
+            CHANGES_FOUND="true"
+            break
+          fi
+        done
+        
+        echo "changes=$CHANGES_FOUND" >> $GITHUB_OUTPUT
+        echo "folders=$FOLDERS" >> $GITHUB_OUTPUT
+        
+    - name: Commit and push if changed
+      if: steps.check_changes.outputs.changes == 'true'
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        
+        # Add each processed folder
+        for FOLDER in ${{ steps.check_changes.outputs.folders }}; do
+          if [[ -d "$FOLDER" ]]; then
+            git add "$FOLDER/"
+          fi
+        done
+        
+        git commit -m "Update: Icon styles have been updated"
+        git push
